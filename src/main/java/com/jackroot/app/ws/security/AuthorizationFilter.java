@@ -1,8 +1,6 @@
 package com.jackroot.app.ws.security;
 
 import java.io.IOException;
-import java.util.ArrayList;
-
 import javax.servlet.FilterChain;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -13,12 +11,18 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 
+import com.jackroot.app.ws.io.entity.UserEntity;
+import com.jackroot.app.ws.io.repositories.UserRepository;
+
 import io.jsonwebtoken.Jwts;
 
 public class AuthorizationFilter extends BasicAuthenticationFilter {
+	
+	private final UserRepository userRepository;
 
-	public AuthorizationFilter(AuthenticationManager authenticationManager) {
+	public AuthorizationFilter(AuthenticationManager authenticationManager, UserRepository userRepository) {
 		super(authenticationManager);
+		this.userRepository = userRepository;
 	}
 	
 	@Override
@@ -50,7 +54,12 @@ public class AuthorizationFilter extends BasicAuthenticationFilter {
 					.getBody()
 					.getSubject();
 			if (user != null) {
-				return new UsernamePasswordAuthenticationToken(user, null, new ArrayList<>());
+				UserEntity userEntity = userRepository.findByEmail(user);
+				if (userEntity == null) {
+					return null;
+				}
+				UserPrincipal userPrincipal = new UserPrincipal(userEntity);
+				return new UsernamePasswordAuthenticationToken(userPrincipal, null, userPrincipal.getAuthorities());
 			}
 			return null;
 		}

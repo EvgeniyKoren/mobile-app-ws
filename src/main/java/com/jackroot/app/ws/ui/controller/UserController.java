@@ -5,6 +5,8 @@ import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 
 import org.modelmapper.ModelMapper;
@@ -15,6 +17,9 @@ import org.springframework.hateoas.CollectionModel;
 import org.springframework.hateoas.EntityModel;
 import org.springframework.hateoas.Link;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.annotation.Secured;
+import org.springframework.security.access.prepost.PostAuthorize;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.jackroot.app.ws.service.AddressService;
 import com.jackroot.app.ws.service.UserService;
+import com.jackroot.app.ws.shared.Roles;
 import com.jackroot.app.ws.shared.dto.AddressDTO;
 import com.jackroot.app.ws.shared.dto.UserDto;
 import com.jackroot.app.ws.ui.model.request.PasswordResetModel;
@@ -37,8 +43,13 @@ import com.jackroot.app.ws.ui.model.response.OperationStatusModel;
 import com.jackroot.app.ws.ui.model.response.RequestOperationStatus;
 import com.jackroot.app.ws.ui.model.response.UserRest;
 
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+
 @RestController
 @RequestMapping("/users") // http://localhost:8080/users
+//@CrossOrigin(origins= {"http://localhost:8083", "http://localhost:8084"})
 public class UserController {
 	
 	@Autowired
@@ -47,6 +58,14 @@ public class UserController {
 	@Autowired
 	AddressService addressesService;
 
+	@PostAuthorize("hasRole('ROLE_ADMIN') or returnObject.userId == principal.userId")
+	@ApiOperation(value = "The Get User Details Web Service Endpoint",
+			notes = "${userController.GetUser.ApiOperation.Notes}")
+	@ApiImplicitParams({
+		@ApiImplicitParam(name = "authorization", 
+						  value = "${userController.authorizationHeader.description}", 
+						  paramType = "header")
+	})
 	@GetMapping(path = "/{id}",
 				produces = {MediaType.APPLICATION_XML_VALUE, MediaType.APPLICATION_JSON_VALUE})
 	public UserRest getUser(@PathVariable String id) {
@@ -60,6 +79,7 @@ public class UserController {
 		return returnValue;
 	}
 
+	@ApiOperation(value = "The Create User Web Service Endpoint")
 	@PostMapping(consumes = { MediaType.APPLICATION_XML_VALUE, MediaType.APPLICATION_JSON_VALUE }, 
 				 produces = { MediaType.APPLICATION_XML_VALUE, MediaType.APPLICATION_JSON_VALUE })
 	public UserRest createUser(@RequestBody UserDetailsRequestModel userDetails) throws Exception {
@@ -69,6 +89,7 @@ public class UserController {
 //		BeanUtils.copyProperties(userDetails, userDto);
 		ModelMapper modelMapper = new ModelMapper();
 		UserDto userDto = modelMapper.map(userDetails, UserDto.class);
+		userDto.setRoles(new HashSet<>(Arrays.asList(Roles.ROLE_USER.name())));
 
 		UserDto createdUser = userService.createUser(userDto);
 		returnValue = modelMapper.map(createdUser, UserRest.class);
@@ -76,6 +97,12 @@ public class UserController {
 		return returnValue;
 	}
 
+	@ApiOperation(value = "The Update User Web Service Endpoint")
+	@ApiImplicitParams({
+		@ApiImplicitParam(name = "authorization", 
+						  value = "${userController.authorizationHeader.description}", 
+						  paramType = "header")
+	})
 	@PutMapping(path = "/{id}",
 				consumes = { MediaType.APPLICATION_XML_VALUE, MediaType.APPLICATION_JSON_VALUE }, 
 			 	produces = { MediaType.APPLICATION_XML_VALUE, MediaType.APPLICATION_JSON_VALUE })
@@ -83,14 +110,22 @@ public class UserController {
 		UserRest returnValue = new UserRest();
 
 		UserDto userDto = new UserDto();
-		BeanUtils.copyProperties(userDetails, userDto);
+		userDto = new ModelMapper().map(userDetails, UserDto.class);
 
 		UserDto updatedUser = userService.updateUser(id, userDto);
-		BeanUtils.copyProperties(updatedUser, returnValue);
+		returnValue = new ModelMapper().map(updatedUser, UserRest.class);
 
 		return returnValue;
 	}
 
+	@PreAuthorize("hasRole('ROLE_ADMIN') or #id == principal.userId")
+//	@PreAuthorize("hasAuthority('DELETE_AUTHORITY')")
+//	@Secured("ROLE_ADMIN")
+	@ApiImplicitParams({
+		@ApiImplicitParam(name = "authorization", 
+						  value = "${userController.authorizationHeader.description}", 
+						  paramType = "header")
+	})
 	@DeleteMapping(path = "/{id}",
 				   produces = { MediaType.APPLICATION_XML_VALUE, MediaType.APPLICATION_JSON_VALUE })
 	public OperationStatusModel deleteUser(@PathVariable String id) {
@@ -103,22 +138,34 @@ public class UserController {
 		return returnValue;
 	}
 	
+	@ApiImplicitParams({
+		@ApiImplicitParam(name = "authorization", 
+						  value = "${userController.authorizationHeader.description}", 
+						  paramType = "header")
+	})
 	@GetMapping(produces = { MediaType.APPLICATION_XML_VALUE, MediaType.APPLICATION_JSON_VALUE })
 	public List<UserRest> getUsers(@RequestParam(value = "page", defaultValue = "0") int page,
 								   @RequestParam(value = "limit", defaultValue = "2") int limit) {
 		List<UserRest> returnValue = new ArrayList<>();
 		List<UserDto> users = userService.getUsers(page, limit);
 		
-		for (UserDto userDto : users) {
-			UserRest userModel = new UserRest();
-			BeanUtils.copyProperties(userDto, userModel);
-			returnValue.add(userModel);
-		}
+		Type listType = new TypeToken<List<UserRest>>() {}.getType();
+		returnValue = new ModelMapper().map(users, listType);
+		
+		/*
+		 * for (UserDto userDto : users) { UserRest userModel = new UserRest();
+		 * BeanUtils.copyProperties(userDto, userModel); returnValue.add(userModel); }
+		 */
 		
 		return returnValue;
 	}
 	
 	//http://localhost:8080/mobile-app-ws/users/sdjkflsjljasdflj/addresses
+	@ApiImplicitParams({
+		@ApiImplicitParam(name = "authorization", 
+						  value = "${userController.authorizationHeader.description}", 
+						  paramType = "header")
+	})
 	@GetMapping(path = "/{id}/addresses", produces = { MediaType.APPLICATION_XML_VALUE,
 			MediaType.APPLICATION_JSON_VALUE, "application/hal+json" })
 	public CollectionModel<AddressesRest> getUserAddresses(@PathVariable String id) {
@@ -143,6 +190,11 @@ public class UserController {
 		return new CollectionModel<>(addressesListRestModel);
 	}
 	
+	@ApiImplicitParams({
+		@ApiImplicitParam(name = "authorization", 
+						  value = "${userController.authorizationHeader.description}", 
+						  paramType = "header")
+	})
 	@GetMapping(path = "/{userId}/addresses/{addressId}", produces = { MediaType.APPLICATION_XML_VALUE,
 			MediaType.APPLICATION_JSON_VALUE, "application/hal+json" })
 	public EntityModel<AddressesRest> getUserAddress(@PathVariable String userId, @PathVariable String addressId) {

@@ -1,6 +1,8 @@
 package com.jackroot.app.ws.service.impl;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 
 import org.modelmapper.ModelMapper;
@@ -17,9 +19,12 @@ import org.springframework.stereotype.Service;
 
 import com.jackroot.app.ws.exceptions.UserServiceException;
 import com.jackroot.app.ws.io.entity.PasswordResetTokenEntity;
+import com.jackroot.app.ws.io.entity.RoleEntity;
 import com.jackroot.app.ws.io.entity.UserEntity;
 import com.jackroot.app.ws.io.repositories.PasswordResetTokenRepository;
+import com.jackroot.app.ws.io.repositories.RoleRepository;
 import com.jackroot.app.ws.io.repositories.UserRepository;
+import com.jackroot.app.ws.security.UserPrincipal;
 import com.jackroot.app.ws.service.UserService;
 import com.jackroot.app.ws.shared.AmazonSES;
 import com.jackroot.app.ws.shared.Utils;
@@ -32,6 +37,9 @@ public class UserServiceImpl implements UserService {
 
 	@Autowired
 	UserRepository userRepository;
+	
+	@Autowired
+	RoleRepository roleRepository;
 
 	@Autowired
 	Utils utils;
@@ -68,6 +76,17 @@ public class UserServiceImpl implements UserService {
 		userEntity.setEncryptedPassword(bCryptPasswordEncoder.encode(user.getPassword()));
 		userEntity.setEmailVerificationToken(utils.generateEmailVerificationToken(publicUserId));
 		userEntity.setEmailVerificationStatus(false);
+		
+		//Set roles
+		Collection<RoleEntity> roleEntities = new HashSet<>();
+		for (String role : user.getRoles()) {
+			RoleEntity roleEntity = roleRepository.findByName(role);
+			if (roleEntity != null) {
+				roleEntities.add(roleEntity);
+			}
+		}
+		
+		userEntity.setRoles(roleEntities);
 
 		UserEntity storedUserDetails = userRepository.save(userEntity);
 
@@ -102,9 +121,11 @@ public class UserServiceImpl implements UserService {
 		if (userEntity == null) {
 			throw new UsernameNotFoundException(email);
 		}
-
-		return new User(userEntity.getEmail(), userEntity.getEncryptedPassword(),
-				userEntity.getEmailVerificationStatus(), true, true, true, new ArrayList<>());
+		
+		return new UserPrincipal(userEntity);
+		
+//		return new User(userEntity.getEmail(), userEntity.getEncryptedPassword(),
+//				userEntity.getEmailVerificationStatus(), true, true, true, new ArrayList<>());
 //		return new User(userEntity.getEmail(), userEntity.getEncryptedPassword(), new ArrayList<>());
 	}
 
